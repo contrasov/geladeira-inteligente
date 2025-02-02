@@ -9,9 +9,27 @@ pub async fn handle_sensor_data(lines: &[&str], state: &Arc<Mutex<SystemState>>)
     for line in lines.iter().skip(1) {
         let parts: Vec<&str> = line.split_whitespace().collect();
         match parts[..] {
-            ["TEMPERATURA", value] => state.temperatura_interna = value.parse().unwrap_or(4.0),
-            ["PORTA", status] => state.porta_aberta = status.eq_ignore_ascii_case("ABERTA"),
-            ["ESTOQUE", percent] => state.nivel_estoque = percent.parse().unwrap_or(0),
+            ["TEMPERATURA", value] => {
+                if let Ok(temp) = value.parse::<f32>() {
+                    state.temperatura_interna = temp.clamp(-20.0, 50.0);
+                } else {
+                    return "MANAGER/1.0 400 INVALID_TEMP\r\n\r\n".to_string();
+                }
+            },
+            ["PORTA", status] => {
+                let status_clean = status.trim().to_lowercase();
+                state.porta_aberta = match status_clean.as_str() {
+                    "aberta" => true,
+                    "fechada" => false,
+                    _ => return "MANAGER/1.0 400 INVALID_DOOR\r\n\r\n".to_string()
+                };
+            },
+            ["ESTOQUE", percent] => {
+                match percent.parse::<u8>() {
+                    Ok(p) if p <= 100 => state.nivel_estoque = p,
+                    _ => return "MANAGER/1.0 400 INVALID_STOCK\r\n\r\n".to_string()
+                }
+            },
             _ => {}
         }
     }
