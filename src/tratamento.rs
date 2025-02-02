@@ -41,7 +41,6 @@ pub async fn tratar_dados_sensor(partes: &[&str], estado: &Arc<Mutex<EstadoSiste
         }
     }
 
-    // Se não recebeu um ID, gera um UUID automaticamente
     let id_sensor = id_sensor.unwrap_or_else(|| Uuid::new_v4().to_string());
 
     match tipo_sensor {
@@ -62,12 +61,17 @@ pub async fn handle_client_command(lines: &[&str], state: &Arc<Mutex<EstadoSiste
     match lines.get(1) {
         Some(&"GET_STATUS") => format!(
             "\r\nGERENCIADOR/1.0 200 OK\r\n\
-            TEMPERATURA: {:.1}\r\n\
-            PORTA: {}\r\n\
-            REFRIGERADOR: {}\r\n\
-            ALARME: {}\r\n\r\n",
+            TEMPERATURA {:.1} ID {}\r\n\
+            PORTA {} ID {}\r\n\
+            ESTOQUE {}% ID {}\r\n\
+            REFRIGERADOR {}\r\n\
+            ALARME {}\r\n\r\n",
             state.temperatura_interna,
+            state.id_temperatura,
             if state.porta_aberta { "ABERTA" } else { "FECHADA" },
+            state.id_porta,
+            state.nivel_estoque,
+            state.id_estoque,
             if state.refrigerador_ligado { "LIGADO" } else { "DESLIGADO" },
             if state.alarme_ativado { "ATIVADO" } else { "NORMAL" }
         ),

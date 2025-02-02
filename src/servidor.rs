@@ -4,6 +4,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use std::time::{Duration, Instant};
 use crate::tratamento::{handle_client_command, tratar_dados_sensor, handle_actuator_command};
+use uuid::Uuid;
 
 #[derive(Default)]
 pub struct EstadoSistema {
@@ -33,9 +34,9 @@ impl EstadoSistema {
             nivel_estoque: 0,
             porta_aberta: false,
             ultima_atualizacao_porta: None,
-            id_temperatura: String::new(),
-            id_porta: String::new(),
-            id_estoque: String::new(),
+            id_temperatura: Uuid::new_v4().to_string(), // ← Gera IDs válidos inicialmente
+            id_porta: Uuid::new_v4().to_string(),
+            id_estoque: Uuid::new_v4().to_string(),
             refrigerador_ligado: false,
             luz_ligada: false,
             alarme_ativado: false,
@@ -106,13 +107,14 @@ pub async fn loop_controle(state: Arc<Mutex<EstadoSistema>>) {
         interval.tick().await;
         let mut state = state.lock().await;
 
-        // Controle da luz e  da porta
+        // Controle da luz e da porta
         if state.porta_aberta {
             state.luz_ligada = true;
             
             if let Some(start_time) = state.ultima_atualizacao_porta {
                 if start_time.elapsed().as_secs() > state.tempo_alerta_porta {
                     state.alarme_ativado = true;
+                    println!("🚨 Alarme ativado! Porta aberta por mais de {} segundos", state.tempo_alerta_porta);
                 }
             } else {
                 state.ultima_atualizacao_porta = Some(Instant::now());
@@ -123,7 +125,31 @@ pub async fn loop_controle(state: Arc<Mutex<EstadoSistema>>) {
             state.ultima_atualizacao_porta = None;
         }
 
+        // Controle do refrigerador com logging
+        let refrigerador_anterior = state.refrigerador_ligado;
         state.refrigerador_ligado = state.temperatura_interna > state.temperatura_ideal;
 
+        // Log de mudança de estado
+        if refrigerador_anterior != state.refrigerador_ligado {
+            let status = if state.refrigerador_ligado {
+                "LIGADO 🔌 (temperatura acima do limite)"
+            } else {
+                "DESLIGADO 🔋 (temperatura dentro do limite)"
+            };
+            println!(
+                "❄️  Refrigerador {} → {:.1}°C | Limite: {:.1}°C",
+                status, state.temperatura_interna, state.temperatura_ideal
+            );
+        }
+
+        // Atualização da temperatura
+        if state.refrigerador_ligado {
+            let nova_temp = state.temperatura_interna - 0.5;
+            state.temperatura_interna = nova_temp.clamp(
+                state.temperatura_ideal - 5.0,  // Temperatura mínima
+                50.0                            // Temperatura máxima de segurança
+            );
+            println!("🌡️  Resfriando: {:.1}°C → {:.1}°C", nova_temp + 0.5, state.temperatura_interna);
+        }
     }
 }
