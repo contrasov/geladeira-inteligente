@@ -21,6 +21,8 @@ pub struct EstadoSistema {
     pub refrigerador_ligado: bool,
     pub luz_ligada: bool,
     pub alarme_ativado: bool,
+    pub id_refrigerador: String,
+    pub id_luz: String,
     
     // Configurações
     pub temperatura_ideal: f32,
@@ -37,6 +39,8 @@ impl EstadoSistema {
             id_temperatura: Uuid::new_v4().to_string(), // ← Gera IDs válidos inicialmente
             id_porta: Uuid::new_v4().to_string(),
             id_estoque: Uuid::new_v4().to_string(),
+            id_refrigerador: Uuid::new_v4().to_string(),
+            id_luz: Uuid::new_v4().to_string(),
             refrigerador_ligado: false,
             luz_ligada: false,
             alarme_ativado: false,
@@ -48,7 +52,7 @@ impl EstadoSistema {
 
 pub async fn iniciar_servidor(state: Arc<Mutex<EstadoSistema>>) -> tokio::io::Result<()> {
     let listener = TcpListener::bind("127.0.0.1:8080").await?;
-    println!("🚀 Servidor rodando em 127.0.0.1:8080");
+    println!("\r\n\r\n🚀 Servidor rodando em 127.0.0.1:8080");
 
     loop {
         let (mut socket, addr) = listener.accept().await?;
@@ -123,6 +127,14 @@ pub async fn loop_controle(state: Arc<Mutex<EstadoSistema>>) {
             state.luz_ligada = false;
             state.alarme_ativado = false;
             state.ultima_atualizacao_porta = None;
+        }
+
+        let luz_anterior = state.luz_ligada;
+        if luz_anterior != state.luz_ligada {
+            println!("💡 Luz {} → Porta {}", 
+                if state.luz_ligada { "ACESSA" } else { "APAGADA" },
+                if state.porta_aberta { "ABERTA" } else { "FECHADA" }
+            );
         }
 
         // Controle do refrigerador com logging

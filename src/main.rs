@@ -38,6 +38,8 @@ async fn main() {
         }
     });
 
+    
+
     // Inicia o loop de controle
     let estado_clone = Arc::clone(&estado);
     tokio::spawn(async move {

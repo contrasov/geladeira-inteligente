@@ -60,12 +60,13 @@ pub async fn handle_client_command(lines: &[&str], state: &Arc<Mutex<EstadoSiste
     
     match lines.get(1) {
         Some(&"GET_STATUS") => format!(
-            "\r\nGERENCIADOR/1.0 200 OK\r\n\
-            TEMPERATURA {:.1} ID {}\r\n\
-            PORTA {} ID {}\r\n\
-            ESTOQUE {}% ID {}\r\n\
-            REFRIGERADOR {}\r\n\
-            ALARME {}\r\n\r\n",
+            "\r\nGERENCIADOR/1.0 200 OK\r\n\r\n\
+            TEMPERATURA: {:.1} | ID: {}\r\n\
+            PORTA: {} | ID: {}\r\n\
+            ESTOQUE: {}% | ID: {}\r\n\
+            REFRIGERADOR: {} | ID: {}\r\n\
+            LUZ: {} | ID: {}\r\n\
+            ALARME: {}\r\n\r\n",
             state.temperatura_interna,
             state.id_temperatura,
             if state.porta_aberta { "ABERTA" } else { "FECHADA" },
@@ -73,16 +74,29 @@ pub async fn handle_client_command(lines: &[&str], state: &Arc<Mutex<EstadoSiste
             state.nivel_estoque,
             state.id_estoque,
             if state.refrigerador_ligado { "LIGADO" } else { "DESLIGADO" },
+            state.id_refrigerador,
+            if state.luz_ligada { "ACESA" } else { "APAGADA" },
+            state.id_luz,
             if state.alarme_ativado { "ATIVADO" } else { "NORMAL" }
         ),
         Some(&"SET_LIMIT") => {
             if let Some(valor) = lines.get(2) {
                 if let Ok(temp) = valor.parse::<f32>() {
                     state.temperatura_ideal = temp;
-                    format!("GERENCIADOR/1.0 200 OK\r\nLIMITE: {:.1}\r\n\r\n", state.temperatura_ideal)
+                    format!("\r\nGERENCIADOR/1.0 200 OK\r\n\r\nLIMITE: {:.1}\r\n\r\n", state.temperatura_ideal)
                 } else {
-                    "GERENCIADOR/1.0 400 ERROR\r\n\r\n".to_string()
+                    "\r\nGERENCIADOR/1.0 400 ERROR\r\n\r\n".to_string()
                 }
+            } else {
+                "\r\nGERENCIADOR/1.0 400 ERROR\r\n\r\n".to_string()
+            }
+        },
+        Some(&"SET_PORTA") => {
+            if let Some(status) = lines.get(2) {
+                state.porta_aberta = status.eq_ignore_ascii_case("ABERTA");
+                format!("\r\nGERENCIADOR/1.0 200 OK\r\n\r\nPORTA: {}\r\n\r\n", 
+                    if state.porta_aberta { "ABERTA" } else { "FECHADA" }
+                )
             } else {
                 "GERENCIADOR/1.0 400 ERROR\r\n\r\n".to_string()
             }
