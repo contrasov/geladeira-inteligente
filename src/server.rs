@@ -3,6 +3,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use std::time::{Duration, Instant};
+use crate::handlers::{handle_client_command, handle_sensor_data, handle_actuator_command};
 
 #[derive(Default)]
 pub struct SystemState {
@@ -38,14 +39,16 @@ impl SystemState {
     }
 }
 
-/* criando nosso socket vinculado ao endereço 127.0.0.1:8080*/
-pub async fn start_server() -> tokio::io::Result<()> {
+pub async fn start_server(state: Arc<Mutex<SystemState>>) -> tokio::io::Result<()> {
     let listener = TcpListener::bind("127.0.0.1:8080").await?;
     println!("🚀 Servidor rodando em 127.0.0.1:8080");
 
     loop {
         let (mut socket, addr) = listener.accept().await?;
         println!("📡 Nova conexão de: {:?}", addr);
+        
+        // Clona o estado para cada conexão
+        let state_clone = Arc::clone(&state);
 
         tokio::spawn(async move {
             let mut buffer = [0; 1024];
@@ -55,13 +58,24 @@ pub async fn start_server() -> tokio::io::Result<()> {
                     let request = String::from_utf8_lossy(&buffer[..size]);
                     println!("📥 Mensagem recebida: {}", request);
 
-                    // Responde ao cliente
-                    let response = "HTTP/1.1 200 OK\r\nContent-Length: 13\r\n\r\nHello, client!";
+                    // Processa a requisição com o estado compartilhado
+                    let response = process_request(&request, &state_clone).await;
                     socket.write_all(response.as_bytes()).await.unwrap();
                 }
                 _ => println!("⚠️ Conexão encerrada."),
             }
         });
+    }
+}
+
+async fn process_request(request: &str, state: &Arc<Mutex<SystemState>>) -> String {
+    let lines: Vec<&str> = request.split("\r\n").collect();
+    
+    match lines.first() {
+        Some(&"CLIENT/1.0") => handle_client_command(&lines, state).await,
+        Some(&"SENSOR/1.0") => handle_sensor_data(&lines, state).await,
+        Some(&"ACTUATOR/1.0") => handle_actuator_command(&lines, state).await,
+        _ => "MANAGER/1.0 400 ERROR\r\n\r\n".to_string()
     }
 }
 
