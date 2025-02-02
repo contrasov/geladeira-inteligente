@@ -93,9 +93,10 @@ pub async fn handle_client_command(lines: &[&str], state: &Arc<Mutex<EstadoSiste
         },
         Some(&"SET_PORTA") => {
             if let Some(status) = lines.get(2) {
-                state.porta_aberta = status.eq_ignore_ascii_case("ABERTA");
-                format!("\r\nGERENCIADOR/1.0 200 OK\r\n\r\nPORTA: {}\r\n\r\n", 
-                    if state.porta_aberta { "ABERTA" } else { "FECHADA" }
+                let novo_estado = status.eq_ignore_ascii_case("ABERTA");
+                state.porta_aberta = novo_estado;
+                format!("\r\nGERENCIADOR/1.0 200 OK\r\nPORTA: {}\r\n\r\n", 
+                    if novo_estado { "ABERTA" } else { "FECHADA" }
                 )
             } else {
                 "GERENCIADOR/1.0 400 ERROR\r\n\r\n".to_string()

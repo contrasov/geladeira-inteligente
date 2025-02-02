@@ -47,10 +47,10 @@ impl Sensor {
                     )
                 }
                 TipoSensor::Porta => {
-                    let status = rand::random::<bool>();
+                    let estado = estado.lock().await;
                     format!(
                         "SENSOR/1.0 PORTA {} ID {}\r\n\r\n",
-                        if status { "ABERTA" } else { "FECHADA" },
+                        if estado.porta_aberta { "ABERTA" } else { "FECHADA" },
                         self.id
                     )
                 }

@@ -1,7 +1,7 @@
 use tokio::net::TcpListener;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex};
 use std::time::{Duration, Instant};
 use crate::tratamento::{handle_client_command, tratar_dados_sensor, handle_actuator_command};
 use uuid::Uuid;
@@ -10,7 +10,7 @@ use uuid::Uuid;
 pub struct EstadoSistema {
     // Sensores
     pub temperatura_interna: f32,
-    pub nivel_estoque: u8, // 0-100%
+    pub nivel_estoque: u8, 
     pub porta_aberta: bool,
     pub ultima_atualizacao_porta: Option<Instant>,
     pub id_temperatura: String,
@@ -26,7 +26,7 @@ pub struct EstadoSistema {
     
     // Configurações
     pub temperatura_ideal: f32,
-    pub tempo_alerta_porta: u64, // segundos
+    pub tempo_alerta_porta: u64,
 }
 
 impl EstadoSistema {
@@ -36,7 +36,7 @@ impl EstadoSistema {
             nivel_estoque: 0,
             porta_aberta: false,
             ultima_atualizacao_porta: None,
-            id_temperatura: Uuid::new_v4().to_string(), // ← Gera IDs válidos inicialmente
+            id_temperatura: Uuid::new_v4().to_string(), 
             id_porta: Uuid::new_v4().to_string(),
             id_estoque: Uuid::new_v4().to_string(),
             id_refrigerador: Uuid::new_v4().to_string(),
