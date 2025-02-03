@@ -37,15 +37,6 @@ O servidor será iniciado na porta `8080` e aguardará conexões dos sensores, a
 
 O protocolo de comunicação segue um formato semelhante ao HTTP. Exemplos de comandos suportados:
 
-- **Identificação de sensores e atuadores**:
-  ```
-  SENSOR/1.0 IDENTIFY ID <uuid>
-  ```
-  Resposta esperada:
-  ```
-  GERENCIADOR/1.0 200 OK
-  ```
-
 - **Solicitar status do sistema**:
   ```
   CLIENT/1.0 GET_STATUS
