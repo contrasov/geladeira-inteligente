@@ -15,7 +15,7 @@ Antes de executar o projeto, certifique-se de ter os seguintes requisitos instal
 Clone o repositório e navegue até a pasta do projeto:
 
 ```bash
-git clone https://github.com/seu-usuario/geladeira-inteligente.git
+git clone https://github.com/contrasov/geladeira-inteligente.git
 cd geladeira-inteligente
 ```
 
