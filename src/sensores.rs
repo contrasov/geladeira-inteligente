@@ -1,8 +1,9 @@
 use std::sync::Arc;
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{Mutex, mpsc, oneshot};
 use tokio::time::{sleep, Duration};
 use uuid::Uuid;
 use crate::servidor::EstadoSistema;
+use rand::Rng;
 
 #[derive(Debug, Clone)]
 pub enum TipoSensor {
@@ -25,14 +26,37 @@ impl Sensor {
         }
     }
 
-    pub async fn iniciar(self, estado: Arc<Mutex<EstadoSistema>>, transmissor: mpsc::Sender<String>) {
+    pub async fn iniciar(
+        self,
+        estado: Arc<Mutex<EstadoSistema>>,
+        transmissor: mpsc::Sender<String>,
+        confirmacao_rx: oneshot::Receiver<String>
+    ) {
+        let ident_msg = format!("SENSOR/1.0 IDENTIFY ID {}\r\n\r\n", self.id);
+        if let Err(_) = transmissor.send(ident_msg).await {
+            println!("⚠️ Sensor {}: Falha ao enviar mensagem de identificação.", self.id);
+            return;
+        }
+        println!("🔎 Sensor {}: Mensagem de identificação enviada. Aguardando confirmação...", self.id);
+
+        match confirmacao_rx.await {
+            Ok(resp) if resp.contains("200 OK") => {
+                println!("✅ Sensor {}: Confirmado pelo Gerenciador.", self.id);
+            }
+            _ => {
+                println!("❌ Sensor {}: Falha na confirmação. Abortando envios.", self.id);
+                return;
+            }
+        }
+
         loop {
             sleep(Duration::from_secs(10)).await;
 
             let leitura = match self.tipo {
                 TipoSensor::Temperatura => {
                     let mut estado = estado.lock().await;
-                    estado.temperatura_interna += rand::random::<f32>() * 2.0 - 1.0; // Simula variação de temperatura
+                    let mut rng = rand::thread_rng();
+                    estado.temperatura_interna += rng.gen_range(-1.0..=1.0); // Simula variação de temperatura
                     format!(
                         "SENSOR/1.0\r\nTEMPERATURA {:.1}\r\nID {}\r\n\r\n",
                         estado.temperatura_interna, self.id
@@ -57,7 +81,7 @@ impl Sensor {
             };
 
             if let Err(_) = transmissor.send(leitura).await {
-                println!("⚠️ Falha ao enviar leitura do sensor {}", self.id);
+                println!("⚠️ Sensor {}: Falha ao enviar leitura.", self.id);
             }
         }
     }

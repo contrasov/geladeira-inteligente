@@ -3,8 +3,9 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use std::sync::Arc;
 use tokio::sync::{Mutex};
 use std::time::{Duration, Instant};
-use crate::tratamento::{handle_client_command, tratar_dados_sensor, handle_actuator_command};
+use crate::tratamento::{handle_client_command};
 use uuid::Uuid;
+use tokio::sync::mpsc::Sender;
 
 #[derive(Default)]
 pub struct EstadoSistema {
@@ -26,7 +27,7 @@ pub struct EstadoSistema {
     
     // Configurações
     pub temperatura_ideal: f32,
-    pub tempo_alerta_porta: u64,
+    pub tempo_alerta_porta: u64, 
 }
 
 impl EstadoSistema {
@@ -58,24 +59,19 @@ pub async fn iniciar_servidor(state: Arc<Mutex<EstadoSistema>>) -> tokio::io::Re
         let (mut socket, addr) = listener.accept().await?;
         println!("📡 Nova conexão de: {:?}", addr);
         
-        // Clona o estado para cada conexão
         let state_clone = Arc::clone(&state);
 
         tokio::spawn(async move {
             let mut buffer = [0; 1024];
             
-            // Mantém a conexão aberta
             loop {
                 match socket.read(&mut buffer).await {
-                    Ok(0) => break, // Conexão fechada pelo cliente
+                    Ok(0) => break, 
                     Ok(size) => {
                         let request = String::from_utf8_lossy(&buffer[..size]);
-                        println!("📥 Mensagem recebida: {}", request);
         
-                        // Processa a requisição
                         let response = process_request(&request, &state_clone).await;
                         
-                        // Envia resposta e mantém conexão
                         if let Err(e) = socket.write_all(response.as_bytes()).await {
                             println!("⚠️ Erro ao enviar resposta: {}", e);
                             break;
@@ -86,82 +82,86 @@ pub async fn iniciar_servidor(state: Arc<Mutex<EstadoSistema>>) -> tokio::io::Re
                         break;
                     }
                 }
-                buffer = [0; 1024]; // Limpa o buffer para próxima mensagem
+                buffer = [0; 1024]; 
             }
             println!("🔌 Conexão encerrada com: {:?}", addr);
         });
     }
 }
 
-async fn process_request(request: &str, state: &Arc<Mutex<EstadoSistema>>) -> String {
+pub async fn process_request(request: &str, state: &Arc<Mutex<EstadoSistema>>) -> String {
     let parts: Vec<&str> = request.split_whitespace().collect();
+
+    if parts.first() == Some(&"SENSOR/1.0") && parts.contains(&"IDENTIFY") {
+        return "GERENCIADOR/1.0 200 OK\r\n\r\n".to_string();
+    }
+
+    if parts.first() == Some(&"SENSOR/1.0") {
+        return "GERENCIADOR/1.0 403 COMANDO AUTOMATICO\r\n\r\n".to_string();
+    }
+    
+    if parts.first() == Some(&"ACTUADOR/1.0") {
+        return "GERENCIADOR/1.0 403 COMANDO AUTOMATICO\r\n\r\n".to_string();
+    }
     
     match parts.first() {
         Some(&"CLIENT/1.0") => handle_client_command(&parts, state).await,
-        Some(&"SENSOR/1.0") => tratar_dados_sensor(&parts, state).await,
-        Some(&"ACTUATOR/1.0") => handle_actuator_command(&parts, state).await,
-        _ => "MANAGER/1.0 400 ERROR\r\n\r\n".to_string()
+        _ => "GERENCIADOR/1.0 400 ERROR\r\n\r\n".to_string()
     }
 }
 
-pub async fn loop_controle(state: Arc<Mutex<EstadoSistema>>) {
+pub async fn loop_controle(state: Arc<Mutex<EstadoSistema>>, atuador_tx: Sender<(String, String)>) {
     let mut interval = tokio::time::interval(Duration::from_secs(15));
     
     loop {
         interval.tick().await;
         let mut state = state.lock().await;
 
-        // Controle da luz e da porta
         if state.porta_aberta {
-            state.luz_ligada = true;
-            
+            if !state.luz_ligada {
+                state.luz_ligada = true;
+                let _ = atuador_tx.send((state.id_luz.clone(), "ACENDER".to_string())).await;
+            }
+
             if let Some(start_time) = state.ultima_atualizacao_porta {
                 if start_time.elapsed().as_secs() > state.tempo_alerta_porta {
-                    state.alarme_ativado = true;
-                    println!("🚨 Alarme ativado! Porta aberta por mais de {} segundos", state.tempo_alerta_porta);
+                    if !state.alarme_ativado {
+                        state.alarme_ativado = true;
+                        println!("🚨 Alarme ativado! Porta aberta por mais de {} segundos", state.tempo_alerta_porta);
+                        let _ = atuador_tx.send(("ALARME".to_string(), "ATIVAR".to_string())).await;
+                    }
                 }
             } else {
                 state.ultima_atualizacao_porta = Some(Instant::now());
             }
         } else {
-            state.luz_ligada = false;
+            if state.luz_ligada {
+                state.luz_ligada = false;
+                let _ = atuador_tx.send((state.id_luz.clone(), "APAGAR".to_string())).await;
+            }
             state.alarme_ativado = false;
             state.ultima_atualizacao_porta = None;
         }
 
-        let luz_anterior = state.luz_ligada;
-        if luz_anterior != state.luz_ligada {
-            println!("💡 Luz {} → Porta {}", 
-                if state.luz_ligada { "ACESSA" } else { "APAGADA" },
-                if state.porta_aberta { "ABERTA" } else { "FECHADA" }
-            );
+        let _refrigerador_anterior = state.refrigerador_ligado;
+        if state.temperatura_interna > state.temperatura_ideal {
+            if !state.refrigerador_ligado {
+                println!("❄️ Refrigerador LIGADO 🔌 (temperatura acima do limite)");
+                state.refrigerador_ligado = true;
+                let _ = atuador_tx.send((state.id_refrigerador.clone(), "LIGAR".to_string())).await;
+            }
+        } else {
+            if state.refrigerador_ligado {
+                println!("❄️ Refrigerador DESLIGADO 🔋 (temperatura dentro do limite)");
+                state.refrigerador_ligado = false;
+                let _ = atuador_tx.send((state.id_refrigerador.clone(), "DESLIGAR".to_string())).await;
+            }
         }
 
-        // Controle do refrigerador com logging
-        let refrigerador_anterior = state.refrigerador_ligado;
-        state.refrigerador_ligado = state.temperatura_interna > state.temperatura_ideal;
-
-        // Log de mudança de estado
-        if refrigerador_anterior != state.refrigerador_ligado {
-            let status = if state.refrigerador_ligado {
-                "LIGADO 🔌 (temperatura acima do limite)"
-            } else {
-                "DESLIGADO 🔋 (temperatura dentro do limite)"
-            };
-            println!(
-                "❄️  Refrigerador {} → {:.1}°C | Limite: {:.1}°C",
-                status, state.temperatura_interna, state.temperatura_ideal
-            );
-        }
-
-        // Atualização da temperatura
         if state.refrigerador_ligado {
             let nova_temp = state.temperatura_interna - 0.5;
-            state.temperatura_interna = nova_temp.clamp(
-                state.temperatura_ideal - 5.0,  // Temperatura mínima
-                50.0                            // Temperatura máxima de segurança
-            );
-            println!("🌡️  Resfriando: {:.1}°C → {:.1}°C", nova_temp + 0.5, state.temperatura_interna);
+            state.temperatura_interna = nova_temp.clamp(state.temperatura_ideal - 5.0, 50.0);
+            println!("🌡️ Resfriando ambiente: {:.1}°C  {:.1}°C", nova_temp + 0.5, state.temperatura_interna);
         }
     }
 }
